@@ -1,0 +1,17 @@
+[watch]
+dir = "/home/user/downloads"
+
+[rules]
+# Extension → folder mapping
+".pdf" = "Documents/PDFs"
+".jpg" = "Images"
+".png" = "Images"
+".mp4" = "Videos"
+".zip" = "Archives"
+".rs" = "Code/Rust"
+".py" = "Code/Python"
+".txt" = "Documents/Text"
+".doc" = "Documents/Word"
+".docx" = "Documents/Word"
+".xlsx" = "Documents/Excel"
+".pptx" = "Documents/PowerPoint"
