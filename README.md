@@ -13,8 +13,28 @@ A fast, CLI-based file organizer that watches directories and automatically sort
 
 ## Installation
 
-### Linux (x86_64)
+### Docker (Recommended)
 
+```bash
+# Clone the repo
+git clone https://github.com/YOUR_USERNAME/ifo.git
+cd ifo
+
+# Build and run with docker-compose
+docker-compose up -d
+
+# Or run directly
+docker build -t ifo .
+docker run -d \
+  --name ifo \
+  -v ~/Downloads:/watch \
+  -v $(pwd)/config.toml:/etc/ifo/config.toml:ro \
+  ifo --dir /watch
+```
+
+### Standalone Binary (No Docker Required)
+
+**Linux:**
 ```bash
 # Download the binary
 wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-linux-amd64
@@ -24,6 +44,26 @@ chmod +x ifo-linux-amd64
 
 # Move to PATH (optional)
 sudo mv ifo-linux-amd64 /usr/local/bin/ifo
+```
+
+**macOS:**
+```bash
+# Download the binary (Intel or Apple Silicon)
+wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-macos-amd64  # Intel
+# OR
+wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-macos-arm64  # Apple Silicon
+
+# Make it executable
+chmod +x ifo-macos-*
+
+# Move to PATH (optional)
+sudo mv ifo-macos-* /usr/local/bin/ifo
+```
+
+**Windows:**
+```powershell
+# Download ifo-windows-amd64.exe from GitHub Releases
+# Move to a folder in your PATH, or run directly
 ```
 
 ### From Source
@@ -125,8 +165,13 @@ ifo --dir ~/Downloads --verbose
 
 ## Requirements
 
-- Linux (x86_64)
-- No dependencies required
+### Docker
+- Docker installed (https://docs.docker.com/get-docker/)
+
+### Standalone Binary
+- **Linux:** x86_64 (no dependencies)
+- **macOS:** x86_64 or ARM64 (no dependencies)
+- **Windows:** x86_64 (no dependencies)
 
 ## Building from Source
 

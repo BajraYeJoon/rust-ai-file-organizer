@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  ifo:
+    build: .
+    container_name: ifo
+    restart: unless-stopped
+    volumes:
+      - ${WATCH_DIR:-~/Downloads}:/watch
+      - ./config.toml:/etc/ifo/config.toml:ro
+    command: ["--dir", "/watch"]
