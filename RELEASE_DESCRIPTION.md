@@ -21,7 +21,7 @@ docker-compose up -d
 
 **Standalone Binary (No Docker Required):**
 - Download the binary for your platform from the Assets below
-- Make it executable (Linux/macOS): `chmod +x ifo-*`
+- Make it executable (Linux): `chmod +x ifo-*`
 - Run directly or move to PATH
 
 **From Source:**
@@ -42,9 +42,8 @@ ifo --dir ~/Downloads            # Run for real
 ```
 
 ### What's Included
-- `ifo-linux-amd64` - Linux x86_64 binary
-- `ifo-macos-amd64` - macOS Intel binary
-- `ifo-macos-arm64` - macOS Apple Silicon binary
+- `ifo-linux-amd64` - Linux x86_64 static binary (works on Arch, CachyOS, Fedora, etc.)
+- `ifo-linux-amd64-glibc` - Linux x86_64 glibc binary (for Ubuntu/Debian)
 - `ifo-windows-amd64.exe` - Windows x86_64 binary
 - Docker support
 - Example config.toml

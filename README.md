@@ -34,9 +34,9 @@ docker run -d \
 
 ### Standalone Binary (No Docker Required)
 
-**Linux:**
+**Linux (Arch, CachyOS, Fedora, etc.):**
 ```bash
-# Download the binary
+# Download the static binary (works on any distro)
 wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-linux-amd64
 
 # Make it executable
@@ -46,18 +46,16 @@ chmod +x ifo-linux-amd64
 sudo mv ifo-linux-amd64 /usr/local/bin/ifo
 ```
 
-**macOS:**
+**Linux (Ubuntu, Debian - glibc):**
 ```bash
-# Download the binary (Intel or Apple Silicon)
-wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-macos-amd64  # Intel
-# OR
-wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-macos-arm64  # Apple Silicon
+# Download the glibc binary
+wget https://github.com/YOUR_USERNAME/ifo/releases/download/v0.1.0/ifo-linux-amd64-glibc
 
 # Make it executable
-chmod +x ifo-macos-*
+chmod +x ifo-linux-amd64-glibc
 
 # Move to PATH (optional)
-sudo mv ifo-macos-* /usr/local/bin/ifo
+sudo mv ifo-linux-amd64-glibc /usr/local/bin/ifo
 ```
 
 **Windows:**
@@ -169,8 +167,8 @@ ifo --dir ~/Downloads --verbose
 - Docker installed (https://docs.docker.com/get-docker/)
 
 ### Standalone Binary
-- **Linux:** x86_64 (no dependencies)
-- **macOS:** x86_64 or ARM64 (no dependencies)
+- **Linux:** x86_64 (static binary, works on Arch/CachyOS/Fedora/etc.)
+- **Linux (glibc):** x86_64 (for Ubuntu/Debian-based distros)
 - **Windows:** x86_64 (no dependencies)
 
 ## Building from Source
