@@ -111,6 +111,32 @@ fn get_config_dir() -> PathBuf {
         .join("ifo")
 }
 
+fn get_install_dir() -> Result<PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        Ok(dirs::home_dir()
+            .context("Failed to get home directory")?
+            .join(".local")
+            .join("bin"))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Ok(dirs::data_local_dir()
+            .context("Failed to get local data directory")?
+            .join("ifo")
+            .join("bin"))
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        Ok(dirs::home_dir()
+            .context("Failed to get home directory")?
+            .join(".local")
+            .join("bin"))
+    }
+}
+
 fn get_binary_path() -> Result<PathBuf> {
     let current = std::env::current_exe()
         .context("Failed to get current executable path")?;
@@ -126,19 +152,35 @@ fn install(dir: Option<&PathBuf>) -> Result<()> {
     println!("===================================");
     println!();
 
-    // Get paths
-    let binary = get_binary_path()?;
+    let current_binary = get_binary_path()?;
     let config_dir = get_config_dir();
-    let service_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("systemd")
-        .join("user");
+    let install_dir = get_install_dir()?;
 
     // Create directories
+    std::fs::create_dir_all(&install_dir)
+        .context("Failed to create install directory")?;
     std::fs::create_dir_all(&config_dir)
         .context("Failed to create config directory")?;
-    std::fs::create_dir_all(&service_dir)
-        .context("Failed to create systemd directory")?;
+
+    // Install binary
+    let installed_binary = if cfg!(target_os = "windows") {
+        install_dir.join("ifo.exe")
+    } else {
+        install_dir.join("ifo")
+    };
+
+    std::fs::copy(&current_binary, &installed_binary)
+        .context("Failed to copy binary")?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&installed_binary, perms)?;
+    }
+
+    println!("Installed binary: {}", installed_binary.display());
 
     // Create default config if not exists
     let config_file = config_dir.join("config.toml");
@@ -148,7 +190,72 @@ fn install(dir: Option<&PathBuf>) -> Result<()> {
         println!("Created config: {}", config_file.display());
     }
 
-    // Create service file
+    // Platform-specific service setup
+    #[cfg(target_os = "linux")]
+    {
+        setup_systemd(&installed_binary, &watch_dir, &config_dir)?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        setup_windows_service(&installed_binary, &watch_dir)?;
+    }
+
+    println!();
+    println!("Installed!");
+    println!();
+    println!("Watching: {}", watch_dir.display());
+    println!("Config:   {}", config_file.display());
+    println!();
+
+    // Platform-specific PATH instructions
+    #[cfg(target_os = "linux")]
+    {
+        let path_entry = format!("export PATH=\"{}:$PATH\"", install_dir.display());
+        let bashrc = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".bashrc");
+
+        if bashrc.exists() {
+            let content = std::fs::read_to_string(&bashrc).unwrap_or_default();
+            if !content.contains(&path_entry) {
+                println!("Add to PATH (run once):");
+                println!("  echo '{}' >> ~/.bashrc && source ~/.bashrc", path_entry);
+                println!();
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        println!("Add to PATH (run in PowerShell as Admin):");
+        println!("  [Environment]::SetEnvironmentVariable('Path', '{};' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')", install_dir.display());
+        println!();
+        println!("NOTE: Restart your terminal after adding to PATH.");
+    }
+
+    println!("Commands:");
+    println!("  ifo status    - Check if running");
+    println!("  ifo stop      - Stop the service");
+    println!("  ifo start     - Start the service");
+    println!("  ifo uninstall - Remove everything");
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn setup_systemd(binary: &PathBuf, watch_dir: &PathBuf, config_dir: &PathBuf) -> Result<()> {
+    let service_dir = config_dir
+        .parent()
+        .unwrap_or(config_dir)
+        .parent()
+        .unwrap_or(config_dir)
+        .join("systemd")
+        .join("user");
+
+    std::fs::create_dir_all(&service_dir)
+        .context("Failed to create systemd directory")?;
+
     let service_content = format!(
         r#"[Unit]
 Description=Intelligent File Organizer
@@ -187,23 +294,39 @@ WantedBy=default.target
         .status()
         .context("Failed to start service")?;
 
-    println!();
-    println!("Installed!");
-    println!();
-    println!("Watching: {}", watch_dir.display());
-    println!("Config:   {}", config_file.display());
-    println!("Service:  {}", service_file.display());
-    println!();
-    println!("Commands:");
-    println!("  ifo status    - Check if running");
-    println!("  ifo stop      - Stop the service");
-    println!("  ifo start     - Start the service");
-    println!("  ifo uninstall - Remove everything");
-
     // Enable linger for auto-start on login
     let _ = std::process::Command::new("loginctl")
         .args(["enable-linger"])
         .status();
+
+    println!("Service installed and started.");
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn setup_windows_service(binary: &PathBuf, watch_dir: &PathBuf) -> Result<()> {
+    // Add to Windows startup via registry
+    let reg_cmd = format!(
+        "reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v ifo /t REG_SZ /d \"\\\"{}\\\" --dir \\\"{}\\\"\" /f",
+        binary.display(),
+        watch_dir.display()
+    );
+
+    std::process::Command::new("cmd")
+        .args(["/C", &reg_cmd])
+        .status()
+        .context("Failed to add to startup")?;
+
+    println!("Added to Windows startup.");
+
+    // Start it now
+    std::process::Command::new(binary)
+        .args(["--dir", watch_dir.to_str().unwrap_or("")])
+        .spawn()
+        .context("Failed to start ifo")?;
+
+    println!("IFO started.");
 
     Ok(())
 }
@@ -213,35 +336,58 @@ fn uninstall() -> Result<()> {
     println!("==================");
     println!();
 
-    // Stop and disable service
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "stop", "ifo"])
-        .status();
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "disable", "ifo"])
-        .status();
+    // Stop service (Linux)
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "stop", "ifo"])
+            .status();
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "disable", "ifo"])
+            .status();
 
-    // Remove service file
-    let service_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("systemd")
-        .join("user")
-        .join("ifo.service");
+        let service_file = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("systemd")
+            .join("user")
+            .join("ifo.service");
 
-    if service_dir.exists() {
-        std::fs::remove_file(&service_dir)?;
-        println!("Removed service");
+        if service_file.exists() {
+            std::fs::remove_file(&service_file)?;
+            println!("Removed service");
+        }
+
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "daemon-reload"])
+            .status();
     }
 
-    // Reload systemd
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status();
+    // Remove from Windows startup
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v ifo /f"])
+            .status();
+
+        // Kill running process
+        let _ = std::process::Command::new("taskkill")
+            .args(["/IM", "ifo.exe", "/F"])
+            .status();
+
+        println!("Removed from startup");
+    }
 
     // Remove binary
-    let binary = get_binary_path()?;
-    if binary.exists() {
-        std::fs::remove_file(&binary)?;
+    let install_dir = get_install_dir()?;
+    let binary_name = if cfg!(target_os = "windows") {
+        "ifo.exe"
+    } else {
+        "ifo"
+    };
+    let installed_binary = install_dir.join(binary_name);
+
+    if installed_binary.exists() {
+        std::fs::remove_file(&installed_binary)?;
         println!("Removed binary");
     }
 
@@ -270,15 +416,39 @@ fn uninstall() -> Result<()> {
 }
 
 fn status() -> Result<()> {
-    let output = std::process::Command::new("systemctl")
-        .args(["--user", "status", "ifo"])
-        .status()
-        .context("Failed to check status")?;
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("systemctl")
+            .args(["--user", "status", "ifo"])
+            .status()
+            .context("Failed to check status")?;
 
-    if output.success() {
-        println!("IFO is running");
-    } else {
-        println!("IFO is not running");
+        if output.success() {
+            println!("IFO is running");
+        } else {
+            println!("IFO is not running");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq ifo.exe"])
+            .output()
+            .context("Failed to check status")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("ifo.exe") {
+            println!("IFO is running");
+        } else {
+            println!("IFO is not running");
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        println!("Status not supported on this platform.");
+        println!("Check if ifo process is running.");
     }
 
     Ok(())
@@ -287,10 +457,22 @@ fn status() -> Result<()> {
 fn start() -> Result<()> {
     println!("Starting IFO...");
 
-    std::process::Command::new("systemctl")
-        .args(["--user", "start", "ifo"])
-        .status()
-        .context("Failed to start service")?;
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("systemctl")
+            .args(["--user", "start", "ifo"])
+            .status()
+            .context("Failed to start service")?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let install_dir = get_install_dir()?;
+        let binary = install_dir.join("ifo.exe");
+        std::process::Command::new(binary)
+            .spawn()
+            .context("Failed to start ifo")?;
+    }
 
     println!("IFO started.");
 
@@ -300,10 +482,20 @@ fn start() -> Result<()> {
 fn stop() -> Result<()> {
     println!("Stopping IFO...");
 
-    std::process::Command::new("systemctl")
-        .args(["--user", "stop", "ifo"])
-        .status()
-        .context("Failed to stop service")?;
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("systemctl")
+            .args(["--user", "stop", "ifo"])
+            .status()
+            .context("Failed to stop service")?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/IM", "ifo.exe", "/F"])
+            .status();
+    }
 
     println!("IFO stopped.");
 
