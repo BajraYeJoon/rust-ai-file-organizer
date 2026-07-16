@@ -1,6 +1,3 @@
-[watch]
-dir = "/home/user/downloads"
-
 [rules]
 # Extension → folder mapping
 ".pdf" = "Documents/PDFs"
